@@ -1,44 +1,78 @@
+
 from flask import Flask, request, jsonify
 import json
 import os
+from cryptography.fernet import Fernet
 
 app = Flask(__name__)
 
-RUTA_DB = "db_keys.json"
+CLAVE_CIFRADO = b'8L_FI3qCduGzj-mJXtU7gK-K1vb3UdFFfxqccZ0AiP0='  # NO CAMBIAR
+fernet = Fernet(CLAVE_CIFRADO)
 
-# Cargar o crear base de datos
-if os.path.exists(RUTA_DB):
-    with open(RUTA_DB, "r") as f:
+if not os.path.exists("usuarios.json"):
+    with open("usuarios.json", "w") as f:
+        json.dump({}, f)
+
+with open("usuarios.json", "r") as f:
+    db = json.load(f)
+
+@app.route('/')
+def home():
+    return 'Servidor funcionando correctamente.'
+
+@app.route('/verificar', methods=['POST'])
+def verificar():
+    data = request.json
+    correo = data.get('correo')
+
+    if not correo:
+        return jsonify({'error': 'Correo no proporcionado'}), 400
+
+    if correo not in db:
+        return jsonify({'valido': False})
+
+    usuario = db[correo]
+    creditos = usuario.get("creditos", 0)
+    return jsonify({'valido': True, 'creditos': creditos})
+
+@app.route('/clave', methods=['POST'])
+def obtener_clave():
+    data = request.json
+    correo = data.get('correo')
+
+    if not correo:
+        return jsonify({'error': 'Correo no proporcionado'}), 400
+
+    usuario = db.get(correo)
+    if not usuario or "clave" not in usuario:
+        return jsonify({'error': 'Clave no encontrada'}), 404
+
+    claves = usuario["clave"]
+    cifradas = [fernet.encrypt(clave.encode()).decode() for clave in claves]
+    return jsonify({'claves': cifradas})
+
+@app.route('/asignar_keys', methods=['POST'])
+def asignar_keys():
+    data = request.json
+    correo = data.get('correo')
+    claves = data.get('claves')
+
+    if not correo or not claves or not isinstance(claves, list):
+        return jsonify({'error': 'Datos inválidos'}), 400
+
+    with open("usuarios.json", "r") as f:
         db = json.load(f)
-else:
-    db = {}
 
-@app.route("/get_api_key", methods=["GET"])
-def get_api_key():
-    email = request.args.get("email")
-    if not email:
-        return jsonify({"error": "Falta el parámetro 'email'"}), 400
+    if correo not in db:
+        db[correo] = {}
 
-    api_key = db.get(email)
-    if api_key:
-        return jsonify({"api_key": api_key}), 200
-    else:
-        return jsonify({"error": "Correo no registrado"}), 404
+    db[correo]["clave"] = claves
 
-@app.route("/add_api_key", methods=["POST"])
-def add_api_key():
-    data = request.get_json()
-    email = data.get("email")
-    api_key = data.get("api_key")
+    with open("usuarios.json", "w") as f:
+        json.dump(db, f, indent=4)
 
-    if not email or not api_key:
-        return jsonify({"error": "Faltan campos 'email' o 'api_key'"}), 400
+    return jsonify({'mensaje': f'Claves asignadas a {correo} correctamente.'})
 
-    db[email] = api_key
-    with open(RUTA_DB, "w") as f:
-        json.dump(db, f, indent=2)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=10000)
 
-    return jsonify({"message": "API key guardada correctamente"}), 200
-
-if __name__ == "__main__":
-    app.run()
