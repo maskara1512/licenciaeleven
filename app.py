@@ -1,4 +1,3 @@
-
 from flask import Flask, request, jsonify
 import json
 import os
@@ -72,6 +71,12 @@ def asignar_keys():
         json.dump(db, f, indent=4)
 
     return jsonify({'mensaje': f'Claves asignadas a {correo} correctamente.'})
+
+@app.route('/ver_claves', methods=['GET'])
+def ver_claves():
+    with open("usuarios.json", "r") as f:
+        db = json.load(f)
+    return jsonify(db)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
